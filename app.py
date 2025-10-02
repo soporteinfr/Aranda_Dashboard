@@ -2,8 +2,30 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import base64
 
 st.set_page_config(page_title='Gestión de Datos y Visualización', page_icon='assets/Imagen1.png', layout='wide')
+
+def set_background(image_file):
+    with open(image_file, "rb") as f:
+        data = f.read()
+    encoded_image = base64.b64encode(data).decode()
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/png;base64,{encoded_image}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+set_background("assets/imagen.png")
 
 os.makedirs("data", exist_ok=True)
 os.makedirs("data_filtered", exist_ok=True)
@@ -103,7 +125,7 @@ if archivo_guardado:
                     # Gráficas de pastel por grupo "Especialista"
                     col_pie1, col_pie2 = st.columns(2)
 
-                    # Cerrados por grupo "Especialista"
+                    # Tabla de casos cerrados.
                     df_cerrados = df_grafico[df_grafico["Estado"].str.lower().isin(["cerrado", "solucionado"])]
                     if not df_cerrados.empty:
                         cerrados_por_analista = df_cerrados["Especialista"].value_counts().reset_index()
@@ -118,7 +140,7 @@ if archivo_guardado:
                     else:
                         col_pie1.info("No hay casos cerrados para mostrar.")
 
-                    # Pendientes por analista
+                    # Tabla de casos pendientes.
                     df_pendientes = df_grafico[df_grafico["Estado"].str.lower() == "pendiente"]
                     if not df_pendientes.empty:
                         pendientes_por_analista = df_pendientes["Especialista"].value_counts().reset_index()
@@ -130,6 +152,25 @@ if archivo_guardado:
                             title="Distribución de casos pendientes por analista"
                         )
                         col_pie2.plotly_chart(fig_pendientes, use_container_width=True)
+
+                        col_tabla1, col_tabla2 = st.columns(2)
+
+                        with col_tabla1:
+                            if not df_cerrados.empty:
+                                tabla_cerrados = df_cerrados["Especialista"].value_counts().reset_index()
+                                tabla_cerrados.columns = ["Especialista", "Cantidad de Casos Cerrados"]
+                                st.dataframe(tabla_cerrados)
+                            else:
+                                st.info("No hay datos de casos cerrados para mostrar.")
+
+                        with col_tabla2:
+                            if not df_pendientes.empty:
+                                tabla_pendientes = df_pendientes["Especialista"].value_counts().reset_index()
+                                tabla_pendientes.columns = ["Especialista", "Cantidad de Casos Pendientes"]
+                                st.dataframe(tabla_pendientes)
+                            else:
+                                st.info("No hay datos de casos pendientes para mostrar.")
+
                     else:
                         col_pie2.info("No hay casos pendientes para mostrar.")
 
@@ -161,3 +202,50 @@ if archivo_guardado:
                         st.plotly_chart(fig_apps, use_container_width=True)
                     else:
                         st.info("No hay aplicaciones válidas para mostrar.")
+                    
+                    # Holt-Winters Forecasting
+                    periodos = df_grupo["Año"].nunique()
+                    if periodos >= 3:
+                        resumen_full = df_grupo.groupby("Año-Mes")["Numero de caso"].count().reset_index(name="Cantidad")
+                        resumen_full["Año-Mes"] = pd.to_datetime(resumen_full["Año-Mes"])
+                        resumen_full = resumen_full.sort_values("Año-Mes")
+                        resumen_full.set_index("Año-Mes", inplace=True)
+
+                        try:
+
+                            modelo = ExponentialSmoothing(
+                                resumen_full["Cantidad"],
+                                trend="add",
+                                seasonal="add",
+                                seasonal_periods=12
+                            )
+                            ajuste = modelo.fit()
+                            proyeccion = ajuste.forecast(6)
+
+                            df_proyeccion = proyeccion.reset_index()
+                            df_proyeccion.columns = ["Mes", "Proyección"]
+
+                            fig_forecast = px.line(
+                                resumen_full.reset_index(),
+                                x="Año-Mes",
+                                y="Cantidad",
+                                markers=True,
+                                title=f"Proyección Holt-Winters - Grupo: {grupo}",
+                                labels={"Año-Mes": "Mes", "Cantidad": "Número de Casos"}
+                            )
+                            fig_forecast.add_scatter(
+                                x=df_proyeccion["Mes"],
+                                y=df_proyeccion["Proyección"],
+                                mode="lines+markers",
+                                name="Proyección",
+                                line=dict(dash="dot", color="red")
+                            )
+                            st.plotly_chart(fig_forecast, use_container_width=True)
+                            st.subheader("📅 Tabla de Proyección")
+                            df_proyeccion["Mes"] = pd.to_datetime(df_proyeccion["Mes"]).dt.strftime("%Y-%m")
+                            st.dataframe(df_proyeccion)
+
+                        except Exception as e:
+                            st.warning(f"No se pudo generar la proyección: {e}")
+                    else:
+                        st.warning("Cantidad de periodos por debajo de los recomendados, no puede generarse una proyección estable.")
