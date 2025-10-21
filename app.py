@@ -142,9 +142,10 @@ if archivo_guardado:
                             año_seleccionado = int(opcion)
                             año_anterior = año_seleccionado - 1
 
-                            df_actual = df_grafico[df_grafico["Año"] == año_seleccionado]
-                            df_anterior = df_grafico[df_grafico["Año"] == año_anterior]
+                            df_actual = df_grupo[df_grupo["Año"] == año_seleccionado].copy()
+                            df_anterior = df_grupo[df_grupo["Año"] == año_anterior].copy()
 
+                            # Aplicar filtro de estado
                             if estado_seleccionado == "Pendientes":
                                 df_actual = df_actual[df_actual["Estado"].str.lower() == "pendiente"]
                                 df_anterior = df_anterior[df_anterior["Estado"].str.lower() == "pendiente"]
@@ -176,7 +177,7 @@ if archivo_guardado:
                             fig.update_layout(
                                 title=f"Comparación de casos registrados - {estado_seleccionado}",
                                 xaxis=dict(title="Mes", tickmode="array", tickvals=list(range(1, 13)),
-                                        ticktext=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]),
+                                        ticktext=["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]),
                                 yaxis_title="Número de Casos"
                             )
 
