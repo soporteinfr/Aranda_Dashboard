@@ -1,0 +1,18 @@
+RUES: rues, rue
+Actualización de Datos: actualización de datos, AC, actualizacion
+SIRP: Certificados, sirp, cuf sirp
+PagosOnline: pagos, pago, ath
+CajasWeb: cajasweb, cajas web, caja, cobrar, cobro, liquidacion, recibo, reingreso 
+Afilcam: afiliacion, fidelizacion, afiliado, desafiliada
+Certificado Electrónico: certificados, certificado, certitoken, certifica
+Proponentes: CUF PW, PW, proponente, proponentes, rup, propo.
+Devoluciones web: devolucion, dinero, devoluciones, glosas,glosa
+Documentos Web: documentos web, documentosweb.
+Docunet: docunet, docuent, listado, tramites, archivaron, listado glosa
+Matricula: objeto social, razón social, matricula, sas virtual, sas, s.a.s., mt, sc, constitución, libros electrónicos, capital suscrito
+Renovación: renovacion, renovaciones, renovacionserver, renovacionweb, RN
+Sipref: sipref
+SIRP Afiliados: sirp de afiliado, sirp de afiliados, sirp afiliados
+SIRP Cajas: sirp cajas, sirp cajero, sirp caja, sirp-cajero, sirp-cajas, sirp-caja, sirp de cajas, sipr cajas, sipr cajero, sirp de caja, habilite la siguiente opcion, habilitar opcion, agregar opcion, opciones, agregar criterio, árbol, diferencia, interface
+SIRP Certificados: sirp, solicitud, nuevo certifica, crear certifica, parámetros, modulo, ajustar, ajuste información, ajuste certificado, revisión, parametrizar, certificado, certificados, código
+SIRP Inscripciones: actos, acto, sirp, sociedad, sirp inscripciones

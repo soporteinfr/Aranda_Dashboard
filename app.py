@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import base64
 import re
+from collections import defaultdict
 
 st.set_page_config(page_title='Gestión de Datos y Visualización', page_icon='assets/Imagen1.png', layout='wide')
 
@@ -244,67 +245,59 @@ if archivo_guardado:
 
                     else:
                         col_pie2.info("No hay casos pendientes para mostrar.")
+                        
+                    trigger_map = {}
+                    try:
+                        with open("Triggers.txt", "r", encoding="utf-8") as f:
+                            for line in f:
+                                if ":" in line:
+                                    category, keywords = line.strip().split(":", 1)
+                                    trigger_map[category.strip()] = [kw.strip().lower() for kw in keywords.split(",") if kw.strip()]
+                    except FileNotFoundError:
+                        st.error("No se encontró el archivo Triggers.txt. Asegúrate de subirlo o colocarlo en la misma carpeta que app.py.")
+                        
+                    # Prioridad en caso de empate
+                    prioridad = ["Matricula", "Renovación", "SIRP", "CajasWeb"]
 
-                    # Mapeo de palabras clave para clasificación
-                    trigger_map = {
-                        'Matriculas_Constitucion': ['Asociar', 'MT', 'SC', 'capital suscrito', 'corregir ceros'],
-                        'SVI - Servicio Virtual de Inscripcion': ['SI'],
-                        'Renovacion Nacional': ['RN', 'renovacion'],
-                        'Proponentes': ['PW', 'proponentes'],
-                        'Actualización de datos': ['AC'],
-                        'Certificado Electrónico': ['certificado'],
-                        'Otras aplicaciones de registro': ['procesar pago']
-                    }
-
-                    # Función para limpiar nombres (quitar números y espacios, capitalizar)
-                    def clean_name(name):
-                        name = str(name).strip()  # quitar espacios
-                        name = re.sub(r'^\d+\s*', '', name)  # quitar números al inicio
-                        return name.capitalize()
-
-                    # Función para categorizar cada fila
+                    # Función para categorizar
                     def categorize_row(row):
-                        segundo = str(row['Segundo Nivel']).strip()
-                        primero = str(row['Primer Nivel']).strip()
-                        asunto = str(row['Asunto']).strip()
-                        descripcion = str(row['Descripcion']).strip()
+                        asunto = str(row["Asunto"]).lower()
+                        descripcion = str(row["Descripcion"]).lower()
+                        counts = defaultdict(int)
 
-                        # Considerar Solicitud, Falla y Fallo
-                        if segundo in ['Solicitud', 'Falla', 'Fallo', 'Aplicaciones']:
-                            if 'otros' in primero.lower():
-                                return 'Otras aplicaciones de registro'
-                            elif primero == 'Aplicaciones':
-                                # Buscar en Asunto
-                                for categoria, keywords in trigger_map.items():
-                                    if any(kw.lower() in asunto.lower() for kw in keywords):
-                                        return categoria
-                                # Buscar en Descripcion
-                                for categoria, keywords in trigger_map.items():
-                                    if any(kw.lower() in descripcion.lower() for kw in keywords):
-                                        return categoria
-                                return 'Otras aplicaciones de registro'
-                            else:
-                                return clean_name(primero)
+                        # Buscar en Asunto y Descripción
+                        for category, keywords in trigger_map.items():
+                            for kw in keywords:
+                                if kw in asunto or kw in descripcion:
+                                    counts[category] += 1
+
+                        if counts:
+                            max_count = max(counts.values())
+                            candidatas = [cat for cat, val in counts.items() if val == max_count]
+                            for p in prioridad:
+                                if p in candidatas:
+                                    return p
+                            return candidatas[0]
                         else:
-                            if 'otros' in segundo.lower():
-                                return 'Otras aplicaciones de registro'
-                            return clean_name(segundo)
+                            return "Otras aplicaciones de registro"
 
                     # Aplicar categorización
-                    df_grafico['Categoria'] = df_grafico.apply(categorize_row, axis=1)
+                    df_grafico["Categoria Detectada"] = df_grafico.apply(categorize_row, axis=1)
 
-                    # Contar frecuencias y dejar solo el TOP 10
-                    conteo_categorias = df_grafico['Categoria'].value_counts().reset_index()
-                    conteo_categorias.columns = ['Aplicación', 'Cantidad']
-                    conteo_top10 = conteo_categorias.head(10)
+                    # Top 10 categorías
+                    top_categories = df_grafico["Categoria Detectada"].value_counts().nlargest(10).reset_index()
+                    top_categories.columns = ["Aplicación", "Cantidad"]
 
-                    # Crear gráfica de barras horizontal ordenada
+                    # Gráfica horizontal
                     fig_apps = px.bar(
-                        conteo_top10.sort_values('Cantidad', ascending=True),
-                        x='Cantidad', y='Aplicación', orientation='h',
-                        title='Top 10 Categorías de Aplicaciones',
-                        labels={'Cantidad': 'Número de Casos', 'Aplicación': 'Aplicación'},
-                        color='Cantidad', color_continuous_scale='Blues'
+                        top_categories.sort_values("Cantidad", ascending=True),
+                        x="Cantidad",
+                        y="Aplicación",
+                        orientation="h",
+                        title="Top 10 Categorías de Aplicaciones",
+                        labels={"Cantidad": "Número de Casos", "Aplicación": "Aplicación"},
+                        color="Cantidad",
+                        color_continuous_scale="Blues"
                     )
 
                     st.plotly_chart(fig_apps, use_container_width=True)
