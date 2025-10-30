@@ -246,6 +246,10 @@ if archivo_guardado:
                     else:
                         col_pie2.info("No hay casos pendientes para mostrar.")
                         
+                    # Prioridad en caso de empate
+                    prioridad = ["Matricula", "Renovación", "SIRP", "CajasWeb"]
+                    
+                    # Cargar triggers desde archivo
                     trigger_map = {}
                     try:
                         with open("Triggers.txt", "r", encoding="utf-8") as f:
@@ -255,21 +259,20 @@ if archivo_guardado:
                                     trigger_map[category.strip()] = [kw.strip().lower() for kw in keywords.split(",") if kw.strip()]
                     except FileNotFoundError:
                         st.error("No se encontró el archivo Triggers.txt. Asegúrate de subirlo o colocarlo en la misma carpeta que app.py.")
-                        
-                    # Prioridad en caso de empate
-                    prioridad = ["Matricula", "Renovación", "SIRP", "CajasWeb"]
 
-                    # Función para categorizar
+                    # Prioridad en caso de empate (excluyendo Actualización de Datos)
+                    prioridad = [cat for cat in trigger_map if cat != "Actualización de Datos"]
+
+                    # Función para categorizar con menor peso a 'Actualización de Datos'
                     def categorize_row(row):
                         asunto = str(row["Asunto"]).lower()
                         descripcion = str(row["Descripcion"]).lower()
-                        counts = defaultdict(int)
+                        counts = defaultdict(float)
 
-                        # Buscar en Asunto y Descripción
                         for category, keywords in trigger_map.items():
                             for kw in keywords:
                                 if kw in asunto or kw in descripcion:
-                                    counts[category] += 1
+                                    counts[category] += 1 if category != "Actualización de Datos" else 0.5
 
                         if counts:
                             max_count = max(counts.values())
@@ -291,15 +294,13 @@ if archivo_guardado:
                     # Gráfica horizontal
                     fig_apps = px.bar(
                         top_categories.sort_values("Cantidad", ascending=True),
-                        x="Cantidad",
-                        y="Aplicación",
+                        x="Cantidad", y="Aplicación",
                         orientation="h",
-                        title="Top 10 Categorías de Aplicaciones",
+                        title="Top 10 Categorías de Aplicaciones (por Asunto y Descripción)",
                         labels={"Cantidad": "Número de Casos", "Aplicación": "Aplicación"},
                         color="Cantidad",
                         color_continuous_scale="Blues"
                     )
-
                     st.plotly_chart(fig_apps, use_container_width=True)
                     
                     # Holt-Winters Forecasting con filtro por estado

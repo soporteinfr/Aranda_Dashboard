@@ -1,5 +1,5 @@
 RUES: rues, rue
-Actualización de Datos: actualización de datos, AC, actualizacion
+Actualización de Datos: actualización de datos, AC
 SIRP: Certificados, sirp, cuf sirp
 PagosOnline: pagos, pago, ath
 CajasWeb: cajasweb, cajas web, caja, cobrar, cobro, liquidacion, recibo, reingreso 
