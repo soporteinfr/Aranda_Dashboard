@@ -54,9 +54,9 @@ if archivo:
 
 if archivo_guardado:
     col_used = [
-        "Numero de caso", "Fecha de registro", "Especialista", "Grupo de especialista", "Estado",
+        "Numero de caso", "Tipo de caso", "Fecha de registro", "Departamento", "Especialista", "Grupo de especialista", "Estado",
         "Asunto", "Descripcion", "Primer Nivel", "Segundo Nivel",
-        "Fecha de en proceso", "Fecha de Pendiente 1", "Fecha de Cerrado"
+        "Fecha de en proceso", "Fecha de Pendiente 1", "Fecha de Cerrado", "Tiempo Total Solucion"
     ]
 
     @st.cache_data
@@ -194,6 +194,70 @@ if archivo_guardado:
                     col2.metric("Total cerrados", total_cerrados)
                     col3.metric("Total pendientes", total_pendientes)
 
+                    with st.container():
+                        st.markdown('<div class="metric-container">', unsafe_allow_html=True)
+                        col4, col5, col6 = st.columns(3)
+
+                        # Indicador 1: Promedio Solución
+                        tiempos_validos = df_grafico["Tiempo Total Solucion"].dropna()
+                        tiempos_validos = tiempos_validos[tiempos_validos.apply(lambda x: isinstance(x, (int, float)))]
+                        if not tiempos_validos.empty:
+                            promedio_minutos = tiempos_validos.mean()
+                            horas = int(promedio_minutos // 60)
+                            minutos = int(promedio_minutos % 60)
+                            tiempo_formateado = f"{horas}h {minutos}min" if horas > 0 else f"{minutos}min"
+                        else:
+                            tiempo_formateado = "No disponible"
+
+                        # Indicador 2: Mayor Tipo Caso
+                        tipos = df_grafico["Tipo de caso"].dropna().astype(str).str.strip().replace("Rquerimiento", "Requerimiento")
+                        tipo_mas_comun = tipos.value_counts().idxmax() if not tipos.empty else "No disponible"
+
+                        # Mostrar indicadores
+                        with col4:
+                            st.metric("Promedio Solución", tiempo_formateado)
+
+                        with col5:
+                            st.metric("Mayor Tipo Caso", tipo_mas_comun)
+
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        
+                    
+                    # Gráfica de participación Pendientes vs Cerrados + Tabla de estados
+                    col_estado_pie, col_estado_tabla = st.columns(2)
+
+                    with col_estado_pie:
+                        estados = df_grafico["Estado"].dropna().str.strip()
+                        estados_lower = estados.str.lower()
+                        total_pendientes = estados_lower.isin(["pendiente"]).sum()
+                        total_cerrados = estados_lower.isin(["cerrado", "solucionado"]).sum()
+                        total_otros = len(df_grafico) - (total_pendientes + total_cerrados)
+
+                        participacion = pd.DataFrame({
+                            "Estado": ["Pendientes", "Cerrados", "Otros"],
+                            "Cantidad": [total_pendientes, total_cerrados, total_otros]
+                        })
+
+                        fig_estado = px.pie(
+                            participacion,
+                            names="Estado",
+                            values="Cantidad",
+                            title="Participación de casos por estado (Pendientes vs Cerrados)",
+                            color="Estado",
+                            color_discrete_map={"Pendientes": "#ECAB33", "Cerrados": "#451ADF", "Otros": "#525252"},
+                            hole=0.3
+                        )
+                        fig_estado.update_traces(textinfo="percent")
+                        st.plotly_chart(fig_estado, use_container_width=True)
+
+                    with col_estado_tabla:
+                        # Tabla con todos los estados desagregados
+                        conteo_estados = estados.value_counts().reset_index()
+                        conteo_estados.columns = ["Estados", "Casos"]
+                        conteo_estados.index = conteo_estados.index + 1
+                        st.markdown("### Distribución por Estado")
+                        st.dataframe(conteo_estados)
+
                     # Gráficas de pastel por grupo "Especialista"
                     col_pie1, col_pie2 = st.columns(2)
 
@@ -202,11 +266,13 @@ if archivo_guardado:
                     if not df_cerrados.empty:
                         cerrados_por_analista = df_cerrados["Especialista"].value_counts().reset_index()
                         cerrados_por_analista.columns = ["Especialista", "Cantidad"]
+                        cerrados_por_analista.index = cerrados_por_analista.index + 1
                         fig_cerrados = px.pie(
                             cerrados_por_analista,
                             names="Especialista",
                             values="Cantidad",
-                            title="Distribución de casos cerrados por analista"
+                            title="Distribución de casos cerrados por analista",
+                            hole=0.3
                         )
                         col_pie1.plotly_chart(fig_cerrados, use_container_width=True)
                     else:
@@ -221,7 +287,8 @@ if archivo_guardado:
                             pendientes_por_analista,
                             names="Especialista",
                             values="Cantidad",
-                            title="Distribución de casos pendientes por analista"
+                            title="Distribución de casos pendientes por analista",
+                            hole=0.3
                         )
                         col_pie2.plotly_chart(fig_pendientes, use_container_width=True)
 
@@ -231,6 +298,7 @@ if archivo_guardado:
                             if not df_cerrados.empty:
                                 tabla_cerrados = df_cerrados["Especialista"].value_counts().reset_index()
                                 tabla_cerrados.columns = ["Especialista", "Cantidad de Casos Cerrados"]
+                                tabla_cerrados.index = tabla_cerrados.index + 1
                                 st.dataframe(tabla_cerrados)
                             else:
                                 st.info("No hay datos de casos cerrados para mostrar.")
@@ -239,6 +307,7 @@ if archivo_guardado:
                             if not df_pendientes.empty:
                                 tabla_pendientes = df_pendientes["Especialista"].value_counts().reset_index()
                                 tabla_pendientes.columns = ["Especialista", "Cantidad de Casos Pendientes"]
+                                tabla_pendientes.index = tabla_pendientes.index + 1
                                 st.dataframe(tabla_pendientes)
                             else:
                                 st.info("No hay datos de casos pendientes para mostrar.")
@@ -246,10 +315,6 @@ if archivo_guardado:
                     else:
                         col_pie2.info("No hay casos pendientes para mostrar.")
                         
-                    # Prioridad en caso de empate
-                    prioridad = ["Matricula", "Renovación", "SIRP", "CajasWeb"]
-                    
-                    # Cargar triggers desde archivo
                     trigger_map = {}
                     try:
                         with open("Triggers.txt", "r", encoding="utf-8") as f:
@@ -259,29 +324,54 @@ if archivo_guardado:
                                     trigger_map[category.strip()] = [kw.strip().lower() for kw in keywords.split(",") if kw.strip()]
                     except FileNotFoundError:
                         st.error("No se encontró el archivo Triggers.txt. Asegúrate de subirlo o colocarlo en la misma carpeta que app.py.")
+                        
+                    # Prioridad en caso de empate
+                    prioridad = ["Matricula", "Renovación", "CajasWeb"]
 
-                    # Prioridad en caso de empate (excluyendo Actualización de Datos)
-                    prioridad = [cat for cat in trigger_map if cat != "Actualización de Datos"]
-
-                    # Función para categorizar con menor peso a 'Actualización de Datos'
                     def categorize_row(row):
                         asunto = str(row["Asunto"]).lower()
                         descripcion = str(row["Descripcion"]).lower()
                         counts = defaultdict(float)
+                        tiene_actualizacion = False
 
+                        # Buscar en Asunto y Descripción
                         for category, keywords in trigger_map.items():
                             for kw in keywords:
                                 if kw in asunto or kw in descripcion:
-                                    counts[category] += 1 if category != "Actualización de Datos" else 0.5
+                                    if "actualización" in category.lower():
+                                        tiene_actualizacion = True
+                                        counts[category] += 0.2  # Penalización ligera
+                                    elif "sirp" in category.lower():
+                                        counts[category] += 0.3  # Penalización SIRP
+                                    else:
+                                        counts[category] += 1.0
 
                         if counts:
+                            # Si hay más de una categoría y una es Actualización, ignorarla si hay otra con más peso
+                            if tiene_actualizacion and len(counts) > 1:
+                                # Eliminar Actualización si hay otra categoría con mayor peso
+                                actualizacion_key = [k for k in counts.keys() if "actualización" in k.lower()]
+                                for key in actualizacion_key:
+                                    del counts[key]
+
+                            # Si después de eliminar sigue vacío, devolver Actualización
+                            if not counts and tiene_actualizacion:
+                                return "Actualización de datos"
+
+                            # Elegir la categoría con mayor peso
                             max_count = max(counts.values())
                             candidatas = [cat for cat, val in counts.items() if val == max_count]
+
+                            # Si hay empate, aplicar prioridad
                             for p in prioridad:
-                                if p in candidatas:
+                                if p.lower() in [c.lower() for c in candidatas]:
                                     return p
+
                             return candidatas[0]
                         else:
+                            # Si no hay coincidencias, pero había Actualización
+                            if tiene_actualizacion:
+                                return "Actualización de datos"
                             return "Otras aplicaciones de registro"
 
                     # Aplicar categorización
@@ -291,18 +381,21 @@ if archivo_guardado:
                     top_categories = df_grafico["Categoria Detectada"].value_counts().nlargest(10).reset_index()
                     top_categories.columns = ["Aplicación", "Cantidad"]
 
-                    # Gráfica horizontal
+                    # Gráfica horizontal con etiquetas dentro
                     fig_apps = px.bar(
                         top_categories.sort_values("Cantidad", ascending=True),
-                        x="Cantidad", y="Aplicación",
+                        x="Cantidad",
+                        y="Aplicación",
                         orientation="h",
-                        title="Top 10 Categorías de Aplicaciones (por Asunto y Descripción)",
+                        title="Top 10 Categorías de Aplicaciones",
                         labels={"Cantidad": "Número de Casos", "Aplicación": "Aplicación"},
                         color="Cantidad",
-                        color_continuous_scale="Blues"
+                        color_continuous_scale="Blues",
+                        text="Cantidad"
                     )
+
+                    fig_apps.update_traces(textposition="inside")
                     st.plotly_chart(fig_apps, use_container_width=True)
-                    
                     # Holt-Winters Forecasting con filtro por estado
                     df_estado = df_grupo.copy()
                     if estado_seleccionado == "Pendientes":
@@ -353,6 +446,7 @@ if archivo_guardado:
                             st.plotly_chart(fig_forecast, use_container_width=True)
                             st.subheader("📅 Tabla de Proyección")
                             df_proyeccion["Mes"] = pd.to_datetime(df_proyeccion["Mes"]).dt.strftime("%Y-%m")
+                            df_proyeccion.index = df_proyeccion.index + 1
                             st.dataframe(df_proyeccion)
 
                         except Exception as e:
