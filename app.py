@@ -30,49 +30,33 @@ def set_background(image_file):
 
 set_background("assets/imagen.png")
 
-os.makedirs("data", exist_ok=True)
-os.makedirs("data_filtered", exist_ok=True)
-
 st.title("Sube tu archivo Excel")
 
 archivo = st.file_uploader("Sube el archivo Excel", type=["xlsx"])
 
-archivo_guardado = False
-ruta_guardado = ""
-
-if archivo:
-    ruta_guardado = os.path.join("data", archivo.name)
-    if os.path.exists(ruta_guardado):
-        st.warning(f"El archivo '{archivo.name}' ya ha sido subido previamente.\n\n"
-                   f"Puedes cambiar el nombre del archivo para realizar una nueva operación o continuar con el archivo existente.")
-        archivo_guardado = True
-    else:
-        with open(ruta_guardado, "wb") as f:
-            f.write(archivo.getbuffer())
-        st.success(f"Archivo guardado en: {ruta_guardado}")
-        archivo_guardado = True
-
-if archivo_guardado:
-    col_used = [
-        "Numero de caso", "Tipo de caso", "Fecha de registro", "Departamento", "Especialista", "Grupo de especialista", "Estado",
-        "Asunto", "Descripcion", "Primer Nivel", "Segundo Nivel",
-        "Fecha de en proceso", "Fecha de Pendiente 1", "Fecha de Cerrado", "Tiempo Total Solucion"
-    ]
-
-    @st.cache_data
-    def cargar_datos(ruta, columnas):
-        df = pd.read_excel(ruta, usecols=columnas, engine="openpyxl")
-        columnas_fecha = ["Fecha de registro", "Fecha de en proceso", "Fecha de Pendiente 1", "Fecha de Cerrado"]
-        for col in columnas_fecha:
-            if df[col].dtype != 'datetime64[ns]':
-                df[col] = pd.to_datetime(df[col], errors="coerce")
-        return df
-
+if archivo is not None:
     try:
-        bl = cargar_datos(ruta_guardado, col_used)
+        col_used = [
+            "Numero de caso", "Tipo de caso", "Fecha de registro", "Departamento",
+            "Especialista", "Grupo de especialista", "Estado", "Asunto", "Descripcion",
+            "Primer Nivel", "Segundo Nivel", "Fecha de en proceso", "Fecha de Pendiente 1",
+            "Fecha de Cerrado", "Tiempo Total Solucion"
+        ]
+
+        @st.cache_data
+        def cargar_datos(file, columnas):
+            df = pd.read_excel(file, usecols=columnas, engine="openpyxl")
+            columnas_fecha = ["Fecha de registro", "Fecha de en proceso", "Fecha de Pendiente 1", "Fecha de Cerrado"]
+            for col in columnas_fecha:
+                if df[col].dtype != 'datetime64[ns]':
+                    df[col] = pd.to_datetime(df[col], errors="coerce")
+            return df
+
+        bl = cargar_datos(archivo, col_used)
     except ValueError as e:
         st.error(f"Error al leer el archivo: {e}\n\nAsegúrate de que el archivo contiene todas las columnas requeridas:\n{', '.join(col_used)}")
         st.stop()
+
 
     grupos_disponibles = bl["Grupo de especialista"].dropna().unique()
     grupos_seleccionados = st.multiselect(
@@ -244,7 +228,7 @@ if archivo_guardado:
                             values="Cantidad",
                             title="Participación de casos por estado (Pendientes vs Cerrados)",
                             color="Estado",
-                            color_discrete_map={"Pendientes": "#ECAB33", "Cerrados": "#451ADF", "Otros": "#525252"},
+                            color_discrete_map={"Pendientes": "#ECAB33", "Cerrados": "#1A6FDF", "Otros": "#525252"},
                             hole=0.3
                         )
                         fig_estado.update_traces(textinfo="percent")
