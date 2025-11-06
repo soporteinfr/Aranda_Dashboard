@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import plotly.express as px
 import plotly.graph_objects as go
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from prophet import Prophet
 import base64
 import re
 from collections import defaultdict
@@ -380,7 +380,8 @@ if archivo is not None:
 
                     fig_apps.update_traces(textposition="inside")
                     st.plotly_chart(fig_apps, use_container_width=True)
-                    # Holt-Winters Forecasting con filtro por estado
+
+                    # Filtrar por estado
                     df_estado = df_grupo.copy()
                     if estado_seleccionado == "Pendientes":
                         df_estado = df_estado[df_estado["Estado"].str.lower() == "pendiente"]
@@ -388,38 +389,36 @@ if archivo is not None:
                         df_estado = df_estado[df_estado["Estado"].str.lower().isin(["cerrado", "solucionado"])]
 
                     # Agrupar por Año-Mes
+                    df_estado["Año-Mes"] = df_estado["Fecha de registro"].dt.to_period("M").astype(str)
                     resumen_full = df_estado.groupby("Año-Mes")["Numero de caso"].count().reset_index(name="Cantidad")
                     resumen_full["Año-Mes"] = pd.to_datetime(resumen_full["Año-Mes"], format="%Y-%m")
                     resumen_full = resumen_full.sort_values("Año-Mes")
-                    resumen_full.set_index("Año-Mes", inplace=True)
 
                     # Reindexar para completar meses faltantes con 0
-                    full_range = pd.date_range(start=resumen_full.index.min(), end=resumen_full.index.max(), freq="MS")
-                    resumen_full = resumen_full.reindex(full_range, fill_value=0)
-                    resumen_full.index.freq = "MS"
+                    full_range = pd.date_range(start=resumen_full["Año-Mes"].min(), end=resumen_full["Año-Mes"].max(), freq="MS")
+                    resumen_full = resumen_full.set_index("Año-Mes").reindex(full_range, fill_value=0).rename_axis("Año-Mes").reset_index()
 
-                    # Detectar baja variación para ajustar estacionalidad
-                    seasonal_component = "add" if resumen_full["Cantidad"].std() >= 2 else None
+                    # Preparar datos para Prophet
+                    df_prophet = resumen_full.rename(columns={"Año-Mes": "ds", "Cantidad": "y"})
 
-                    if len(resumen_full) >= 24:
+                    if len(df_prophet) >= 24:
                         try:
-                            modelo = ExponentialSmoothing(
-                                resumen_full["Cantidad"],
-                                trend="add",
-                                seasonal=seasonal_component,
-                                seasonal_periods=12 if seasonal_component else None
-                            )
-                            ajuste = modelo.fit()
-                            proyeccion = ajuste.forecast(6)
+                            modelo = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
+                            modelo.fit(df_prophet)
 
-                            df_proyeccion = proyeccion.reset_index()
-                            df_proyeccion.columns = ["Mes", "Proyección"]
+                            # Crear fechas futuras
+                            future = modelo.make_future_dataframe(periods=6, freq="MS")
+                            forecast = modelo.predict(future)
 
+                            # Extraer proyección
+                            df_proyeccion = forecast[["ds", "yhat"]].tail(6).rename(columns={"ds": "Mes", "yhat": "Proyección"})
+
+                            # Gráfico
                             fig_forecast = px.line(
-                                resumen_full.reset_index(),
-                                x="index", y="Cantidad", markers=True,  # Cambiado a 'index'
-                                title=f"Proyección Holt-Winters - Estado: {estado_seleccionado}",
-                                labels={"index": "Mes", "Cantidad": "Número de Casos"}
+                                df_prophet,
+                                x="ds", y="y", markers=True,
+                                title=f"Proyección Prophet - Estado: {estado_seleccionado}",
+                                labels={"ds": "Mes", "y": "Número de Casos"}
                             )
                             fig_forecast.add_scatter(
                                 x=df_proyeccion["Mes"], y=df_proyeccion["Proyección"],
@@ -429,11 +428,11 @@ if archivo is not None:
 
                             st.plotly_chart(fig_forecast, use_container_width=True)
                             st.subheader("📅 Tabla de Proyección")
-                            df_proyeccion["Mes"] = pd.to_datetime(df_proyeccion["Mes"]).dt.strftime("%Y-%m")
+                            df_proyeccion["Mes"] = df_proyeccion["Mes"].dt.strftime("%Y-%m")
                             df_proyeccion.index = df_proyeccion.index + 1
                             st.dataframe(df_proyeccion)
 
                         except Exception as e:
-                            st.warning(f"No se pudo generar la proyección: {e}")
+                            st.warning(f"No se pudo generar la proyección con Prophet: {e}")
                     else:
                         st.warning("No hay suficientes datos mensuales para generar una proyección confiable (mínimo 24 meses).")
