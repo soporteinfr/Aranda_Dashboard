@@ -5,10 +5,14 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # Copia el archivo de dependencias
-COPY requirements.txt .
+RUN apt-get update && apt-get install -y build-essential
 
 # Instala dependencias
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir cmdstanpy
+RUN python -m cmdstanpy.install_cmdstan
+
 
 # Copia el resto del proyecto
 COPY . .
