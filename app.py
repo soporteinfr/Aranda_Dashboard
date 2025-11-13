@@ -3,7 +3,7 @@ import pandas as pd
 import os
 import plotly.express as px
 import plotly.graph_objects as go
-from prophet import Prophet
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import base64
 import re
 from collections import defaultdict
@@ -398,41 +398,56 @@ if archivo is not None:
                     full_range = pd.date_range(start=resumen_full["Año-Mes"].min(), end=resumen_full["Año-Mes"].max(), freq="MS")
                     resumen_full = resumen_full.set_index("Año-Mes").reindex(full_range, fill_value=0).rename_axis("Año-Mes").reset_index()
 
-                    # Preparar datos para Prophet
+                    # Preparar datos para Holt-Winters
                     df_prophet = resumen_full.rename(columns={"Año-Mes": "ds", "Cantidad": "y"})
 
                     if len(df_prophet) >= 24:
                         try:
-                            modelo = Prophet(yearly_seasonality=True, weekly_seasonality=False, daily_seasonality=False)
-                            modelo.fit(df_prophet)
+                            # Ajustar modelo Holt-Winters
+                            modelo_hw = ExponentialSmoothing(
+                                df_prophet["y"],
+                                trend="add",       # Tendencia aditiva
+                                seasonal="add",    # Estacionalidad aditiva
+                                seasonal_periods=12  # Ciclo anual
+                            ).fit()
 
-                            # Crear fechas futuras
-                            future = modelo.make_future_dataframe(periods=6, freq="MS")
-                            forecast = modelo.predict(future)
+                            # Crear proyección para los próximos 6 meses
+                            forecast_values = modelo_hw.forecast(6)
+                            future_dates = pd.date_range(
+                                start=df_prophet["ds"].max() + pd.offsets.MonthBegin(),
+                                periods=6,
+                                freq="MS"
+                            )
 
-                            # Extraer proyección
-                            df_proyeccion = forecast[["ds", "yhat"]].tail(6).rename(columns={"ds": "Mes", "yhat": "Proyección"})
+                            # DataFrame con proyección
+                            df_proyeccion = pd.DataFrame({
+                                "Mes": future_dates.strftime("%Y-%m"),
+                                "Proyección": forecast_values
+                            })
 
                             # Gráfico
                             fig_forecast = px.line(
                                 df_prophet,
-                                x="ds", y="y", markers=True,
-                                title=f"Proyección Prophet - Estado: {estado_seleccionado}",
+                                x="ds",
+                                y="y",
+                                markers=True,
+                                title=f"Proyección Holt-Winters - Estado: {estado_seleccionado}",
                                 labels={"ds": "Mes", "y": "Número de Casos"}
                             )
                             fig_forecast.add_scatter(
-                                x=df_proyeccion["Mes"], y=df_proyeccion["Proyección"],
-                                mode="lines+markers", name="Proyección",
+                                x=future_dates.strftime("%Y-%m"),
+                                y=forecast_values,
+                                mode="lines+markers",
+                                name="Proyección",
                                 line=dict(dash="dot", color="red")
                             )
 
                             st.plotly_chart(fig_forecast, use_container_width=True)
                             st.subheader("📅 Tabla de Proyección")
-                            df_proyeccion["Mes"] = df_proyeccion["Mes"].dt.strftime("%Y-%m")
                             df_proyeccion.index = df_proyeccion.index + 1
                             st.dataframe(df_proyeccion)
 
                         except Exception as e:
-                            st.warning(f"No se pudo generar la proyección con Prophet: {e}")
+                            st.warning(f"No se pudo generar la proyección con Holt-Winters: {e}")
                     else:
                         st.warning("No hay suficientes datos mensuales para generar una proyección confiable (mínimo 24 meses).")
